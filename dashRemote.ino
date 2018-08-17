@@ -4,6 +4,7 @@ extern "C"
 }
 
 #define DATA_LENGTH 112
+#define L3_DATA_LENGTH 88
 
 #define TYPE_MANAGEMENT 0x00
 #define TYPE_CONTROL 0x01
@@ -11,7 +12,7 @@ extern "C"
 #define SUBTYPE_PROBE_REQUEST 0x04
 
 struct RxControl
-{
+{ // 12-byte header (L1?)
   // Byte 0
   signed rssi : 8; // signal intensity of packet
   // Byte 1
@@ -48,11 +49,47 @@ struct RxControl
   unsigned : 12;
 };
 
+struct MacHeader
+{ // 24-byte MAC (L2) header
+	// 2-byte frame control
+	unsigned version : 2;
+	unsigned frameType : 2;
+	unsigned frameSubType : 4;
+	unsigned toDS : 1;
+	unsigned fromDS : 1;
+	unsigned : 6;
+	// Rest of the stuff, in which we are not really interested (now)
+	unsigned duration : 16;
+	unsigned destinationAddress : 48;
+	unsigned sourceAddress : 48;
+	unsigned bssid : 48;
+	unsigned seqControl : 16;
+};
+
+struct MiguelPacket
+{
+  // Bytes 0 to 11
+  struct RxControl rx_ctrl;
+  // Bytes 12 to 35 (i.e. 24 additional bytes)
+  struct MacHeader mac_header;
+  // Bytes 36 to 123 (i.e. 88 more bytes)
+  uint8_t data[L3_DATA_LENGTH];
+  // Bytes 124 & 125
+  uint16_t cnt;
+  // Bytes 126 & 127, for a grand total of 128 bytes
+  uint16_t len;
+};
+
+
 struct SnifferPacket
 {
+  // Bytes 0 to 11
   struct RxControl rx_ctrl;
+  // Bytes 12 to 123 (i.e. 112 more bytes)
   uint8_t data[DATA_LENGTH];
+  // Bytes 124 & 125
   uint16_t cnt;
+  // Bytes 126 & 127, for a grand total of 128 bytes
   uint16_t len;
 };
 
@@ -121,6 +158,13 @@ void setup()
   Serial.begin(115200);
   delay(10);
   wifi_set_opmode(STATION_MODE);
+  // Set channel 1 just because. We are only interested in WiFi probes (as recommended by
+  // http://ridiculousfish.com/blog/posts/The-one-second-dash.html) and the Dash button
+  // seems to transmit them in every channel. It kind of makes sense because routers can
+  // be configured to choose the least congested channel, so the Dash can never be sure
+  // about where (in which channel) it will find the network (SSID) it is looking for.
+  // It's fastest to try them all. Or maybe WiFi probes are transmitted outside of any
+  // channel. Either way, we don't need to scan all WiFi channels to catch WiFi probes.
   wifi_set_channel(1);
   wifi_promiscuous_enable(DISABLE);
   delay(10);
